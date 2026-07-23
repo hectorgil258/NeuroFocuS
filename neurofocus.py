@@ -17,7 +17,7 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# --- ESTILOS CSS ---
+# --- ESTILOS CSS (DEEP FOCUS UI) ---
 st.markdown(
     """
     <style>
@@ -27,7 +27,7 @@ st.markdown(
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     }
     div[data-testid="stMetric"] {
-        background: rgba(22, 27, 34, 0.7);
+        background: rgba(22, 27, 34, 0.8);
         border: 1px solid #30363d;
         border-radius: 8px;
         padding: 15px;
@@ -90,6 +90,20 @@ st.markdown(
         padding: 16px;
         margin-bottom: 15px;
     }
+    .user-card {
+        background: #161b22;
+        border: 1px solid #30363d;
+        border-radius: 10px;
+        padding: 20px;
+        text-align: center;
+    }
+    .review-box {
+        background: #161b22;
+        border: 1px solid #30363d;
+        border-radius: 8px;
+        padding: 14px;
+        margin-bottom: 10px;
+    }
     </style>
 """,
     unsafe_allow_html=True,
@@ -111,11 +125,20 @@ def cargar_base_datos():
                         return {
                             "usuarios": {"default": data},
                             "usuario_actual": "default",
+                            "sesion_persistente": False,
+                            "valoraciones": [],
                         }
+                    if "valoraciones" not in data:
+                        data["valoraciones"] = []
                     return data
         except Exception:
             pass
-    return {"usuarios": {}, "usuario_actual": ""}
+    return {
+        "usuarios": {},
+        "usuario_actual": "",
+        "sesion_persistente": False,
+        "valoraciones": [],
+    }
 
 
 def guardar_base_datos(db):
@@ -124,40 +147,6 @@ def guardar_base_datos(db):
 
 
 db = cargar_base_datos()
-
-
-# --- SINCRONIZACIÓN NOTION ---
-def sincronizar_con_notion(token, db_id, tarea, categoria, duracion):
-    if not token or not db_id:
-        return False
-    url = "https://api.notion.com/v1/pages"
-    headers = {
-        "Authorization": f"Bearer {token}",
-        "Content-Type": "application/json",
-        "Notion-Version": "2022-06-28",
-    }
-    payload = {
-        "parent": {"database_id": db_id},
-        "properties": {
-            "Tarea": {"title": [{"text": {"content": str(tarea)}}]},
-            "Categoría": {
-                "rich_text": [{"text": {"content": str(categoria)}}]
-            },
-            "Duración": {"number": float(duracion)},
-            "Fecha": {"date": {"start": str(date.today())}},
-        },
-    }
-    try:
-        req = urllib.request.Request(
-            url,
-            data=json.dumps(payload).encode("utf-8"),
-            headers=headers,
-            method="POST",
-        )
-        with urllib.request.urlopen(req) as resp:
-            return resp.status == 200
-    except Exception:
-        return False
 
 
 # --- CÁLCULO DE INSIGNIAS ---
@@ -202,12 +191,52 @@ def calcular_insignias(sesiones, racha):
     return insignias, horas_totales, num_sesiones
 
 
-# --- LOGIN Y REGISTRO ---
+# --- SINCRONIZACIÓN NOTION ---
+def sincronizar_con_notion(token, db_id, tarea, categoria, duracion):
+    if not token or not db_id:
+        return False
+    url = "https://api.notion.com/v1/pages"
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Content-Type": "application/json",
+        "Notion-Version": "2022-06-28",
+    }
+    payload = {
+        "parent": {"database_id": db_id},
+        "properties": {
+            "Tarea": {"title": [{"text": {"content": str(tarea)}}]},
+            "Categoría": {
+                "rich_text": [{"text": {"content": str(categoria)}}]
+            },
+            "Duración": {"number": float(duracion)},
+            "Fecha": {"date": {"start": str(date.today())}},
+        },
+    }
+    try:
+        req = urllib.request.Request(
+            url,
+            data=json.dumps(payload).encode("utf-8"),
+            headers=headers,
+            method="POST",
+        )
+        with urllib.request.urlopen(req) as resp:
+            return resp.status == 200
+    except Exception:
+        return False
+
+
+# --- GESTIÓN DE SESIÓN PERSISTENTE ---
+if "autenticado" not in st.session_state:
+    if db.get("sesion_persistente", False) and db.get("usuario_actual") in db.get(
+        "usuarios", {}
+    ):
+        st.session_state.autenticado = True
+    else:
+        st.session_state.autenticado = False
+
 usuario_actual = db.get("usuario_actual", "")
 
-if "autenticado" not in st.session_state:
-    st.session_state.autenticado = False
-
+# --- LOGIN Y REGISTRO ---
 if not st.session_state.autenticado:
     st.title("NEUROFOCUS // ACCESO")
     tab_login, tab_registro = st.tabs(["Iniciar Sesión", "Registrar Usuario"])
@@ -215,12 +244,15 @@ if not st.session_state.autenticado:
     with tab_login:
         u_login = st.text_input("Usuario:", key="l_user")
         p_login = st.text_input("Contraseña:", type="password", key="l_pass")
+        recordar = st.checkbox("Mantener sesión abierta siempre", value=True)
+
         if st.button("ENTRAR"):
             if u_login in db["usuarios"]:
                 user_rec = db["usuarios"][u_login]
                 if user_rec.get("password") == hash_password(p_login):
                     st.session_state.autenticado = True
                     db["usuario_actual"] = u_login
+                    db["sesion_persistente"] = recordar
                     guardar_base_datos(db)
                     st.rerun()
                 else:
@@ -231,6 +263,10 @@ if not st.session_state.autenticado:
     with tab_registro:
         u_reg = st.text_input("Nuevo Usuario:", key="r_user")
         p_reg = st.text_input("Crear Contraseña:", type="password", key="r_pass")
+        recordar_reg = st.checkbox(
+            "Mantener sesión abierta tras registro", value=True
+        )
+
         if st.button("CREAR CUENTA"):
             if u_reg.strip() and u_reg not in db["usuarios"]:
                 es_primer_user = len(db["usuarios"]) == 0
@@ -245,8 +281,10 @@ if not st.session_state.autenticado:
                     "ultima_fecha": "",
                     "notion_token": "",
                     "notion_db_id": "",
+                    "notas_diarias": "",
                 }
                 db["usuario_actual"] = u_reg
+                db["sesion_persistente"] = recordar_reg
                 st.session_state.autenticado = True
                 guardar_base_datos(db)
                 st.success("Cuenta creada con éxito.")
@@ -258,7 +296,7 @@ else:
     # --- USUARIO CONECTADO ---
     datos_user = db["usuarios"][usuario_actual]
 
-    # --- PANTALLA DE CONFIGURACIÓN INICIAL ---
+    # --- PANTALLA DE CONFIGURACIÓN INICIAL (ONBOARDING) ---
     if not datos_user.get("onboarding_completado", False):
         st.title("NEUROFOCUS // PREPARACIÓN DIARIA")
         st.markdown(
@@ -328,7 +366,7 @@ else:
         st.sidebar.title("NEUROFOCUS")
 
         if datos_user.get("avatar"):
-            st.sidebar.image(datos_user["avatar"], width=60)
+            st.sidebar.image(datos_user["avatar"], width=80)
 
         st.sidebar.caption(f"Usuario: {usuario_actual}")
         if datos_user.get("es_admin"):
@@ -348,19 +386,17 @@ else:
 
         st.sidebar.metric(label="Racha Actual", value=f"{racha_s} Días")
 
+        # --- SECCIÓN DE MÚSICA RESTAURADA (SIN LO-FI) ---
         st.sidebar.markdown("---")
-        st.sidebar.subheader("AUDIO PARA TRABAJAR")
-
-        # Se usa un vídeo de lofi estable (no directo) y pistas de larga duración
+        st.sidebar.subheader("AUDIO PARA ENFOQUE")
         opciones_audio = {
             "Ruido Marrón (Aislamiento Total)": "https://www.youtube.com/embed/RqzGzwTY-6w?autoplay=0",
             "Sonido Blanco (Bloqueo de Ruido)": "https://www.youtube.com/embed/nMfPqeZjc2c?autoplay=0",
             "Ondas Alfa (Enfoque Profundo)": "https://www.youtube.com/embed/WPni755-Krg?autoplay=0",
-            "Lofi Focus (Vídeo Musical Estable)": "https://www.youtube.com/embed/5qap5aO4i9A?autoplay=0",
+            "Synthwave Focus (Instrumental Sostenido)": "https://www.youtube.com/embed/4xDzrJKXOOY?autoplay=0",
         }
-
         seleccion_audio = st.sidebar.selectbox(
-            "Seleccionar Audio", list(opciones_audio.keys())
+            "Pista de Fondo", list(opciones_audio.keys())
         )
         url_embed = opciones_audio[seleccion_audio]
 
@@ -375,6 +411,8 @@ else:
             [
                 "Ejecución de Bloque",
                 "Métricas y Logros",
+                "Comunidad / Perfiles",
+                "Feedback & Valoraciones",
                 "Protocolos de Enfoque",
                 "Configuración & Cuentas",
             ],
@@ -382,6 +420,8 @@ else:
 
         if st.sidebar.button("Cerrar Sesión"):
             st.session_state.autenticado = False
+            db["sesion_persistente"] = False
+            guardar_base_datos(db)
             st.rerun()
 
         perfil = datos_user.get("perfil", {})
@@ -405,7 +445,7 @@ else:
             with col_t2:
                 detalle_tarea = st.text_input(
                     "Nombre o detalle de la tarea:",
-                    placeholder="Ej. Estudio Física Tema 3 / Mezcla de audio",
+                    placeholder="Ej. Estudio Física / Producción Beat",
                 )
 
             tarea_final = (
@@ -417,10 +457,10 @@ else:
             with col_a:
                 energia = st.slider("¿Cómo te sientes de energía? (1-5)", 1, 5, 3)
                 lbl_energia = {
-                    1: "Energía baja - Se recomienda un bloque corto (15 min)",
-                    2: "Energía moderada - Bloque de duración media (25 min)",
-                    3: "Energía normal - Bloque recomendado (45 min)",
-                    4: "Energía alta - Bloque largo (60 min)",
+                    1: "Energía baja - Recomendado bloque de 15 min",
+                    2: "Energía moderada - Recomendado bloque de 25 min",
+                    3: "Energía normal - Recomendado bloque de 45 min",
+                    4: "Energía alta - Recomendado bloque de 60 min",
                     5: "Energía máxima - Enfoque total (75-90 min)",
                 }
                 st.markdown(
@@ -631,7 +671,126 @@ else:
             else:
                 st.info("Aún no tienes sesiones registradas.")
 
-        # --- PESTAÑA 3: PROTOCOLOS DE ENFOQUE ---
+        # --- PESTAÑA 3: COMUNIDAD / PERFILES ---
+        elif opcion == "Comunidad / Perfiles":
+            st.title("EXPLORADOR DE PERFILES Y COMUNIDAD")
+            st.caption("Consulta el rendimiento y estado de los usuarios.")
+
+            lista_usuarios = list(db["usuarios"].keys())
+            target_user = st.selectbox(
+                "Selecciona un perfil para ver:",
+                lista_usuarios,
+                index=lista_usuarios.index(usuario_actual),
+            )
+
+            u_data = db["usuarios"][target_user]
+            u_sesiones = u_data.get("sesiones", [])
+            u_racha = u_data.get("racha", 0)
+            u_insignias, u_horas, u_num = calcular_insignias(u_sesiones, u_racha)
+
+            st.markdown("---")
+            col_p1, col_p2 = st.columns([1, 2])
+
+            with col_p1:
+                st.markdown('<div class="user-card">', unsafe_allow_html=True)
+                if u_data.get("avatar"):
+                    st.image(u_data["avatar"], width=150)
+                else:
+                    st.markdown("### 👤 (Sin Foto)")
+                st.markdown(f"### {target_user}")
+                if u_data.get("es_admin"):
+                    st.markdown(
+                        '<span class="admin-badge">ADMINISTRADOR</span>',
+                        unsafe_allow_html=True,
+                    )
+                st.markdown("</div>", unsafe_allow_html=True)
+
+            with col_p2:
+                col_s1, col_s2, col_s3 = st.columns(3)
+                col_s1.metric("Horas de Trabajo", f"{u_horas:.1f} hrs")
+                col_s2.metric("Sesiones", u_num)
+                col_s3.metric("Racha", f"{u_racha} días")
+
+                st.markdown("#### Insignias Obtenidas")
+                desbloqueadas = [b for b in u_insignias if b["desbloqueada"]]
+                if desbloqueadas:
+                    for b in desbloqueadas:
+                        st.markdown(f"- **{b['nombre']}**: {b['requisito']}")
+                else:
+                    st.caption("Aún no ha desbloqueado insignias.")
+
+        # --- PESTAÑA 4: FEEDBACK & VALORACIONES ---
+        elif opcion == "Feedback & Valoraciones":
+            st.title("CENTRO DE MEJORA Y VALORACIONES")
+
+            tab_val, tab_libreta = st.tabs(
+                ["Enviar Feedback / Reseña", "Mi Libreta de Anotaciones"]
+            )
+
+            with tab_val:
+                st.subheader("Valora la Aplicación")
+                puntuacion = st.slider(
+                    "Puntuación (1 a 5 Estrellas)", 1, 5, 5
+                )
+                comentario = st.text_area(
+                    "¿Qué te gusta o qué crees que deberíamos mejorar?",
+                    placeholder="Escribe aquí tu opinión o reporte de fallos...",
+                )
+
+                if st.button("ENVIAR VALORACIÓN"):
+                    if comentario.strip():
+                        nueva_val = {
+                            "usuario": usuario_actual,
+                            "fecha": str(date.today()),
+                            "puntuacion": puntuacion,
+                            "comentario": comentario.strip(),
+                        }
+                        db["valoraciones"].append(nueva_val)
+                        guardar_base_datos(db)
+                        st.success(
+                            "¡Gracias por tu opinión! Se ha registrado correctamente."
+                        )
+                        st.rerun()
+                    else:
+                        st.warning("Por favor, escribe un comentario breve.")
+
+                if datos_user.get("es_admin"):
+                    st.markdown("---")
+                    st.subheader("PANEL DE REVISIÓN (SOLO ADMINISTRADOR)")
+                    val_list = db.get("valoraciones", [])
+                    if val_list:
+                        for v in reversed(val_list):
+                            estrellas = "⭐" * v.get("puntuacion", 5)
+                            st.markdown(
+                                f"""
+                                <div class="review-box">
+                                    <div style="font-weight:bold; color:#58a6ff;">{v.get('usuario')} - {estrellas} <span style="font-size:12px; color:#8b949e;">({v.get('fecha')})</span></div>
+                                    <div style="margin-top:5px;">{v.get('comentario')}</div>
+                                </div>
+                            """,
+                                unsafe_allow_html=True,
+                            )
+                    else:
+                        st.info("Aún no hay valoraciones de usuarios.")
+
+            with tab_libreta:
+                st.subheader("Libreta Digital de Registro Diario")
+                st.caption(
+                    "Usa este espacio para volcar tus notas físicas, reflexiones o cosas que quieres programar mañana."
+                )
+
+                texto_notas = st.text_area(
+                    "Mis notas de desarrollo y mejoras personales:",
+                    value=datos_user.get("notas_diarias", ""),
+                    height=250,
+                )
+
+                if st.button("GUARDAR MIS NOTAS"):
+                    datos_user["notas_diarias"] = texto_notas
+                    guardar_base_datos(db)
+                    st.success("Notas guardadas correctamente.")
+
+        # --- PESTAÑA 5: PROTOCOLOS DE ENFOQUE ---
         elif opcion == "Protocolos de Enfoque":
             st.title("GUÍA DE PROTOCOLOS Y HÁBITOS")
 
@@ -676,22 +835,28 @@ else:
             )
 
             st.markdown("---")
-            st.markdown("### TIPS PARA MEJORAR TU DÍA A DÍA")
+            st.markdown("### TIPS ADICIONALES Y ESTRATEGIAS PRÁCTICAS")
             st.markdown(
                 """
             * **Luz Solar Matutina:** Sal a tomar la luz del sol durante 10-15 minutos nada más levantarte para regular tus niveles de energía y dormir mejor por la noche.
             * **Cafeína Estratégica:** Evita consumir café durante los primeros 60-90 minutos tras despertarte para evitar el bajón de energía de la tarde.
             * **Bloques Claros:** Define exactamente qué vas a hacer antes de activar el temporizador. La indecisión durante el bloque arruina la concentración.
+            * **Bloqueadores de Apps:** Usa aplicaciones de bloqueo estricto (como Opal, One Sec o Cold Turkey en PC) durante bloques de estudio profundo.
+            * **Ficción de Fricción:** Dificulta el acceso a distracciones (cierra sesión en redes sociales, elimina atajos del navegador, pon la pantalla en escala de grises).
+            * **Temperatura del Entorno:** Trabajar en un espacio ligeramente fresco (19°C-21°C) mantiene la alerta mental mejor que los espacios calurosos que inducen somnolencia.
+            * **Hidratación y Electrolitos:** Beber agua constante con una pizca de sal o electrolitos al despertar evita la fatiga cerebral prematura.
+            * **REGLA DE ORO:** Si te distraes, no abandones la sesión. Solo nota la distracción, vuelve a la tarea y continúa. Entrenar el enfoque es un músculo.
             """
             )
 
-        # --- PESTAÑA 4: CONFIGURACIÓN & CUENTAS ---
+        # --- PESTAÑA 6: CONFIGURACIÓN & CUENTAS ---
         elif opcion == "Configuración & Cuentas":
-            st.title("CONFIGURACIÓN Y PANEL")
+            st.title("CONFIGURACIÓN Y MI PERFIL")
 
-            st.subheader("Foto de Perfil")
+            st.subheader("Cambiar Foto de Perfil")
             archivo_avatar = st.file_uploader(
-                "Sube tu imagen de perfil (PNG o JPG)", type=["png", "jpg", "jpeg"]
+                "Sube tu foto de perfil desde tus archivos (PNG o JPG)",
+                type=["png", "jpg", "jpeg"],
             )
             if archivo_avatar is not None:
                 bytes_img = archivo_avatar.getvalue()
@@ -700,7 +865,7 @@ else:
                 mime_type = f"image/{ext if ext != 'jpg' else 'jpeg'}"
                 datos_user["avatar"] = f"data:{mime_type};base64,{encoded_img}"
                 guardar_base_datos(db)
-                st.success("¡Foto de perfil actualizada desde tus archivos!")
+                st.success("¡Foto de perfil actualizada correctamente!")
                 st.rerun()
 
             st.markdown("---")
