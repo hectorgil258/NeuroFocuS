@@ -1,3 +1,4 @@
+import base64
 import hashlib
 import json
 import os
@@ -232,7 +233,6 @@ if not st.session_state.autenticado:
         p_reg = st.text_input("Crear Contraseña:", type="password", key="r_pass")
         if st.button("CREAR CUENTA"):
             if u_reg.strip() and u_reg not in db["usuarios"]:
-                # Si no hay usuarios en el sistema, el primero se marca como Admin por defecto
                 es_primer_user = len(db["usuarios"]) == 0
                 db["usuarios"][u_reg] = {
                     "password": hash_password(p_reg),
@@ -351,12 +351,12 @@ else:
         st.sidebar.markdown("---")
         st.sidebar.subheader("AUDIO PARA TRABAJAR")
 
-        # Integración con vídeos estables de más de 1 hora o directos 24/7 en YouTube
+        # Se usa un vídeo de lofi estable (no directo) y pistas de larga duración
         opciones_audio = {
             "Ruido Marrón (Aislamiento Total)": "https://www.youtube.com/embed/RqzGzwTY-6w?autoplay=0",
             "Sonido Blanco (Bloqueo de Ruido)": "https://www.youtube.com/embed/nMfPqeZjc2c?autoplay=0",
             "Ondas Alfa (Enfoque Profundo)": "https://www.youtube.com/embed/WPni755-Krg?autoplay=0",
-            "Lofi Focus (Música Instrumental)": "https://www.youtube.com/embed/jfKfPfyJRdk?autoplay=0",
+            "Lofi Focus (Vídeo Musical Estable)": "https://www.youtube.com/embed/5qap5aO4i9A?autoplay=0",
         }
 
         seleccion_audio = st.sidebar.selectbox(
@@ -640,17 +640,17 @@ else:
             st.markdown(
                 """
             <div class="protocol-box">
-                <h4 style="color:#58a6ff; margin-0;">1. Regla de los 5 Minutos (Inicio Inmediato)</h4>
+                <h4 style="color:#58a6ff; margin:0;">1. Regla de los 5 Minutos (Inicio Inmediato)</h4>
                 <p>Si sientes pereza para empezar, comprométete a trabajar solo durante 5 minutos contados con el reloj. Una vez que superas la fricción inicial, el cerebro entra en flujo y resulta mucho más fácil continuar.</p>
             </div>
             
             <div class="protocol-box">
-                <h4 style="color:#58a6ff; margin-0;">2. Aislamiento Físico del Teléfono</h4>
+                <h4 style="color:#58a6ff; margin:0;">2. Aislamiento Físico del Teléfono</h4>
                 <p>Pon el teléfono en otra habitación o fuera de tu vista directa. Mantenerlo en la misma mesa consume energía atencional dividida aunque esté con la pantalla hacia abajo.</p>
             </div>
             
             <div class="protocol-box">
-                <h4 style="color:#58a6ff; margin-0;">3. Descanso Visual y Mental (Pausas Reales)</h4>
+                <h4 style="color:#58a6ff; margin:0;">3. Descanso Visual y Mental (Pausas Reales)</h4>
                 <p>Al terminar un bloque de trabajo, descansa 5-10 minutos sin mirar pantallas. Camina, toma agua o simplemente mira a la distancia para permitir que la mente procese la información.</p>
             </div>
             """,
@@ -663,12 +663,12 @@ else:
             st.markdown(
                 """
             <div class="protocol-box">
-                <h4 style="color:#a371f7; margin-0;">Opcional 1: Técnica NSDR (Descanso Profundo)</h4>
+                <h4 style="color:#a371f7; margin:0;">Opcional 1: Técnica NSDR (Descanso Profundo)</h4>
                 <p>Túmbate en un lugar cómodo durante 10-15 minutos cerrando los ojos y manteniendo la respiración lenta. Excelente para recuperar claridad cuando estás saturado a mitad del día.</p>
             </div>
             
             <div class="protocol-box">
-                <h4 style="color:#a371f7; margin-0;">Opcional 2: Fijación Visual Previa</h4>
+                <h4 style="color:#a371f7; margin:0;">Opcional 2: Fijación Visual Previa</h4>
                 <p>Antes de arrancar la sesión, fija la mirada en un solo punto de la pared o pantalla durante 30 segundos. Ayuda a activar la atención del cerebro antes de empezar la tarea.</p>
             </div>
             """,
@@ -689,15 +689,18 @@ else:
         elif opcion == "Configuración & Cuentas":
             st.title("CONFIGURACIÓN Y PANEL")
 
-            st.subheader("Perfil")
-            avatar_url = st.text_input(
-                "Enlace de imagen de perfil (Avatar):",
-                value=datos_user.get("avatar", ""),
+            st.subheader("Foto de Perfil")
+            archivo_avatar = st.file_uploader(
+                "Sube tu imagen de perfil (PNG o JPG)", type=["png", "jpg", "jpeg"]
             )
-            if st.button("Guardar Avatar"):
-                datos_user["avatar"] = avatar_url.strip()
+            if archivo_avatar is not None:
+                bytes_img = archivo_avatar.getvalue()
+                encoded_img = base64.b64encode(bytes_img).decode("utf-8")
+                ext = archivo_avatar.name.split(".")[-1]
+                mime_type = f"image/{ext if ext != 'jpg' else 'jpeg'}"
+                datos_user["avatar"] = f"data:{mime_type};base64,{encoded_img}"
                 guardar_base_datos(db)
-                st.success("Avatar actualizado correctamente.")
+                st.success("¡Foto de perfil actualizada desde tus archivos!")
                 st.rerun()
 
             st.markdown("---")
