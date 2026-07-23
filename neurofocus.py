@@ -11,12 +11,12 @@ import streamlit.components.v1 as components
 DATA_FILE = "neurofocus_data.json"
 
 st.set_page_config(
-    page_title="NEUROFOCUS | High-Performance System",
+    page_title="NEUROFOCUS | Sistema de Rendimiento",
     layout="wide",
     initial_sidebar_state="expanded",
 )
 
-# --- INYECCIÓN DE CSS: DARK GLASSMORPHISM PREMIUM ---
+# --- ESTILOS CSS ---
 st.markdown(
     """
     <style>
@@ -30,7 +30,6 @@ st.markdown(
         border: 1px solid #30363d;
         border-radius: 8px;
         padding: 15px;
-        box-shadow: 0 4px 12px rgba(0,0,0,0.3);
     }
     div[data-testid="stMetricValue"] {
         color: #58a6ff !important;
@@ -42,12 +41,9 @@ st.markdown(
         color: #ffffff;
         border: 1px solid rgba(240,246,252,0.1);
         font-weight: 600;
-        transition: all 0.2s ease;
     }
     .stButton>button:hover {
         background-color: #2ea043;
-        border-color: #8b949e;
-        transform: translateY(-1px);
     }
     .badge-card {
         background: #161b22;
@@ -65,7 +61,6 @@ st.markdown(
         font-weight: 700;
         color: #f0f6fc;
         font-size: 14px;
-        letter-spacing: 0.5px;
     }
     .badge-desc {
         font-size: 12px;
@@ -86,7 +81,13 @@ st.markdown(
         border-radius: 4px;
         font-size: 11px;
         font-weight: bold;
-        letter-spacing: 1px;
+    }
+    .protocol-box {
+        background: #161b22;
+        border: 1px solid #30363d;
+        border-radius: 8px;
+        padding: 16px;
+        margin-bottom: 15px;
     }
     </style>
 """,
@@ -98,7 +99,7 @@ def hash_password(password):
     return hashlib.sha256(password.encode()).hexdigest() if password else ""
 
 
-# --- GESTIÓN DE BASE DE DATOS Y MIGRACIÓN ---
+# --- BASE DE DATOS ---
 def cargar_base_datos():
     if os.path.exists(DATA_FILE):
         try:
@@ -124,7 +125,7 @@ def guardar_base_datos(db):
 db = cargar_base_datos()
 
 
-# --- CONEXIÓN CON NOTION API ---
+# --- SINCRONIZACIÓN NOTION ---
 def sincronizar_con_notion(token, db_id, tarea, categoria, duracion):
     if not token or not db_id:
         return False
@@ -158,7 +159,7 @@ def sincronizar_con_notion(token, db_id, tarea, categoria, duracion):
         return False
 
 
-# --- SISTEMA DE LOGROS E INSIGNIAS ---
+# --- CÁLCULO DE INSIGNIAS ---
 def calcular_insignias(sesiones, racha):
     horas_totales = sum(s.get("duracion", 0) for s in sesiones) / 60.0
     num_sesiones = len(sesiones)
@@ -166,32 +167,32 @@ def calcular_insignias(sesiones, racha):
     insignias = [
         {
             "id": "b1",
-            "nombre": "Iniciación al Flujo",
-            "requisito": "Completa tu primera sesión de enfoque",
+            "nombre": "Primera Sesión",
+            "requisito": "Completa tu primer bloque de trabajo",
             "desbloqueada": num_sesiones >= 1,
             "progreso": min(1.0, num_sesiones / 1),
-            "tag": "[FLUX]",
+            "tag": "[INICIO]",
         },
         {
             "id": "b2",
-            "nombre": "Consistencia de Hierro",
-            "requisito": "Alcanza una racha de 3 días consecutivos",
+            "nombre": "Constancia (3 Días)",
+            "requisito": "Mantén una racha de 3 días seguidos",
             "desbloqueada": racha >= 3,
             "progreso": min(1.0, racha / 3),
-            "tag": "[STREAK]",
+            "tag": "[3 DÍAS]",
         },
         {
             "id": "b3",
-            "nombre": "Arquitecto Cognitivo",
-            "requisito": "Acumula 10 horas de trabajo profundo",
+            "nombre": "10 Horas Enfocado",
+            "requisito": "Acumula 10 horas totales de trabajo",
             "desbloqueada": horas_totales >= 10,
             "progreso": min(1.0, horas_totales / 10),
             "tag": "[10H]",
         },
         {
             "id": "b4",
-            "nombre": "Titán del Rendimiento",
-            "requisito": "Acumula 50 horas de trabajo profundo",
+            "nombre": "Dominio Total (50 Horas)",
+            "requisito": "Acumula 50 horas totales de trabajo",
             "desbloqueada": horas_totales >= 50,
             "progreso": min(1.0, horas_totales / 50),
             "tag": "[50H]",
@@ -207,13 +208,13 @@ if "autenticado" not in st.session_state:
     st.session_state.autenticado = False
 
 if not st.session_state.autenticado:
-    st.title("NEUROFOCUS // CONTROL DE ACCESO")
+    st.title("NEUROFOCUS // ACCESO")
     tab_login, tab_registro = st.tabs(["Iniciar Sesión", "Registrar Usuario"])
 
     with tab_login:
         u_login = st.text_input("Usuario:", key="l_user")
         p_login = st.text_input("Contraseña:", type="password", key="l_pass")
-        if st.button("ACCEDER AL SISTEMA"):
+        if st.button("ENTRAR"):
             if u_login in db["usuarios"]:
                 user_rec = db["usuarios"][u_login]
                 if user_rec.get("password") == hash_password(p_login):
@@ -222,19 +223,20 @@ if not st.session_state.autenticado:
                     guardar_base_datos(db)
                     st.rerun()
                 else:
-                    st.error("Credenciales inválidas.")
+                    st.error("Contraseña incorrecta.")
             else:
-                st.error("Usuario no registrado.")
+                st.error("El usuario no existe.")
 
     with tab_registro:
         u_reg = st.text_input("Nuevo Usuario:", key="r_user")
         p_reg = st.text_input("Crear Contraseña:", type="password", key="r_pass")
-        es_admin = st.checkbox("Solicitar Rango Administrador")
         if st.button("CREAR CUENTA"):
             if u_reg.strip() and u_reg not in db["usuarios"]:
+                # Si no hay usuarios en el sistema, el primero se marca como Admin por defecto
+                es_primer_user = len(db["usuarios"]) == 0
                 db["usuarios"][u_reg] = {
                     "password": hash_password(p_reg),
-                    "es_admin": es_admin,
+                    "es_admin": es_primer_user,
                     "avatar": "",
                     "onboarding_completado": False,
                     "perfil": {},
@@ -247,54 +249,54 @@ if not st.session_state.autenticado:
                 db["usuario_actual"] = u_reg
                 st.session_state.autenticado = True
                 guardar_base_datos(db)
-                st.success("Cuenta creada correctamente.")
+                st.success("Cuenta creada con éxito.")
                 st.rerun()
             else:
-                st.error("El nombre de usuario no está disponible.")
+                st.error("Nombre de usuario no disponible.")
 
 else:
-    # --- USUARIO AUTENTICADO ---
+    # --- USUARIO CONECTADO ---
     datos_user = db["usuarios"][usuario_actual]
 
-    # --- PANTALLA DE CALIBRACIÓN INICIAL ---
+    # --- PANTALLA DE CONFIGURACIÓN INICIAL ---
     if not datos_user.get("onboarding_completado", False):
-        st.title("NEUROFOCUS // CALIBRACIÓN DEL SISTEMA")
+        st.title("NEUROFOCUS // PREPARACIÓN DIARIA")
         st.markdown(
-            "Ajuste los parámetros biomecánicos y cognitivos antes de iniciar operaciones."
+            "Ajusta tus parámetros para calcular los tiempos recomendados de trabajo."
         )
         st.markdown("---")
 
         col1, col2 = st.columns(2)
         with col1:
             sueño = st.select_slider(
-                "Descanso Circadiano (Últimas 24h)",
+                "¿Cuántas horas has dormido?",
                 options=[
-                    "< 5h (Déficit Severo)",
-                    "5-6h (Subóptimo)",
-                    "7-8h (Fisiológico)",
-                    "> 8h (Optimizado)",
+                    "Menos de 5h",
+                    "Entre 5h y 6h",
+                    "Entre 7h y 8h",
+                    "Más de 8h",
                 ],
-                value="7-8h (Fisiológico)",
+                value="Entre 7h y 8h",
             )
             distracciones = st.multiselect(
-                "Puntos de Fricción Operativa",
+                "¿Qué te suele distraer más hoy?",
                 [
-                    "Dispositivos móviles",
-                    "Navegación web no estructurada",
-                    "Saturación cognitiva",
-                    "Planificación vaga",
+                    "Móvil y redes sociales",
+                    "Navegar por internet",
+                    "Cansancio mental",
+                    "Falta de organización",
                 ],
-                default=["Dispositivos móviles"],
+                default=["Móvil y redes sociales"],
             )
 
         with col2:
-            val_estres = st.slider("Carga de Estrés Actual (1-5)", 1, 5, 2)
+            val_estres = st.slider("Nivel de estrés o saturación (1-5)", 1, 5, 2)
             lbl_estres = {
-                1: "Mínima / Estado de reposo",
-                2: "Moderada / Carga operativa normal",
-                3: "Elevada / Saturación progresiva",
-                4: "Alta / Cerca del umbral de fatiga",
-                5: "Crítica / Sobrecarga cognitiva",
+                1: "Muy bajo - Totalmente descansado",
+                2: "Normal - Nivel adecuado para trabajar",
+                3: "Moderado - Cierta presión mental",
+                4: "Alto - Cansancio notable",
+                5: "Muy alto - Necesita pausas frecuentes",
             }
             st.markdown(
                 f'<div class="state-label">Estado: {lbl_estres[val_estres]}</div>',
@@ -302,7 +304,7 @@ else:
             )
 
             meta_diaria = st.number_input(
-                "Objetivo de Trabajo Neto (Horas/Día)",
+                "Objetivo de trabajo para hoy (Horas)",
                 min_value=0.5,
                 max_value=12.0,
                 value=4.0,
@@ -310,7 +312,7 @@ else:
             )
 
         st.markdown("---")
-        if st.button("INICIALIZAR PROTOCOLO"):
+        if st.button("GUARDAR Y EMPEZAR"):
             datos_user["onboarding_completado"] = True
             datos_user["perfil"] = {
                 "sueño": sueño,
@@ -322,10 +324,9 @@ else:
             st.rerun()
 
     else:
-        # --- PANEL LATERAL ---
+        # --- MENÚ LATERAL ---
         st.sidebar.title("NEUROFOCUS")
 
-        col_side1, col_side2 = st.columns([1, 3])
         if datos_user.get("avatar"):
             st.sidebar.image(datos_user["avatar"], width=60)
 
@@ -336,7 +337,6 @@ else:
                 unsafe_allow_html=True,
             )
 
-        # Muestra de insignias en sidebar
         sesiones_s = datos_user.get("sesiones", [])
         racha_s = datos_user.get("racha", 0)
         insignias_s, _, _ = calcular_insignias(sesiones_s, racha_s)
@@ -344,37 +344,37 @@ else:
             [b["tag"] for b in insignias_s if b["desbloqueada"]]
         )
         if unlocked_tags:
-            st.sidebar.caption(f"Logros: {unlocked_tags}")
+            st.sidebar.caption(f"Insignias: {unlocked_tags}")
 
-        st.sidebar.metric(label="Racha Consecutiva", value=f"{racha_s} Días")
+        st.sidebar.metric(label="Racha Actual", value=f"{racha_s} Días")
 
         st.sidebar.markdown("---")
-        st.sidebar.subheader("AISLAMIENTO ACÚSTICO")
+        st.sidebar.subheader("AUDIO PARA TRABAJAR")
 
-        # URLs de Spotify comprobadas
+        # Integración con vídeos estables de más de 1 hora o directos 24/7 en YouTube
         opciones_audio = {
-            "Enfoque Profundo (Alfa)": "https://open.spotify.com/embed/playlist/37i9dQZF1DWWQRwui0ExPn?utm_source=generator&theme=0",
-            "Ruido Marrón (Aislamiento)": "https://open.spotify.com/embed/playlist/37i9dQZF1DX4s3V2rT5D2B?utm_source=generator&theme=0",
-            "Sonido Blanco (Bloqueo)": "https://open.spotify.com/embed/playlist/37i9dQZF1DX0SM0LFi383A?utm_source=generator&theme=0",
-            "Lofi Focus": "https://open.spotify.com/embed/playlist/37i9dQZF1DX8U239m92Anv?utm_source=generator&theme=0",
+            "Ruido Marrón (Aislamiento Total)": "https://www.youtube.com/embed/RqzGzwTY-6w?autoplay=0",
+            "Sonido Blanco (Bloqueo de Ruido)": "https://www.youtube.com/embed/nMfPqeZjc2c?autoplay=0",
+            "Ondas Alfa (Enfoque Profundo)": "https://www.youtube.com/embed/WPni755-Krg?autoplay=0",
+            "Lofi Focus (Música Instrumental)": "https://www.youtube.com/embed/jfKfPfyJRdk?autoplay=0",
         }
 
         seleccion_audio = st.sidebar.selectbox(
-            "Entorno Sonoro", list(opciones_audio.keys())
+            "Seleccionar Audio", list(opciones_audio.keys())
         )
         url_embed = opciones_audio[seleccion_audio]
 
         components.html(
-            f'<iframe style="border-radius:8px" src="{url_embed}" width="100%" height="152" frameBorder="0" allowfullscreen="" allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture" loading="lazy"></iframe>',
-            height=160,
+            f'<iframe width="100%" height="160" src="{url_embed}" title="YouTube audio player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>',
+            height=170,
         )
 
         st.sidebar.markdown("---")
         opcion = st.sidebar.radio(
-            "SISTEMA",
+            "MENÚ PRINCIPAL",
             [
                 "Ejecución de Bloque",
-                "Métricas & Logros",
+                "Métricas y Logros",
                 "Protocolos de Enfoque",
                 "Configuración & Cuentas",
             ],
@@ -386,26 +386,26 @@ else:
 
         perfil = datos_user.get("perfil", {})
 
-        # --- PESTAÑA 1: EJECUCIÓN ---
+        # --- PESTAÑA 1: EJECUCIÓN DE BLOQUE ---
         if opcion == "Ejecución de Bloque":
             st.title("MÓDULO DE TRABAJO PROFUNDO")
 
             col_t1, col_t2 = st.columns(2)
             with col_t1:
                 cat_tarea = st.selectbox(
-                    "Categoría Operativa",
+                    "Categoría",
                     [
-                        "Estudio Avanzado",
-                        "Desarrollo / Código",
-                        "Diseño & Producción",
-                        "Análisis / Lectura",
-                        "Otra Actividad",
+                        "Estudio",
+                        "Programación / Código",
+                        "Música / Producción",
+                        "Lectura / Investigación",
+                        "Otra Tarea",
                     ],
                 )
             with col_t2:
                 detalle_tarea = st.text_input(
-                    "Especificación del Bloque:",
-                    placeholder="Ej. Física Tema 3 / Refactorización backend / Mezcla R&B",
+                    "Nombre o detalle de la tarea:",
+                    placeholder="Ej. Estudio Física Tema 3 / Mezcla de audio",
                 )
 
             tarea_final = (
@@ -415,37 +415,35 @@ else:
 
             col_a, col_b = st.columns(2)
             with col_a:
-                energia = st.slider(
-                    "Nivel de Energía Fisiológica (1-5)", 1, 5, 3
-                )
+                energia = st.slider("¿Cómo te sientes de energía? (1-5)", 1, 5, 3)
                 lbl_energia = {
-                    1: "[1/5] Depleción central / Requiere bloques cortos (10-15 min)",
-                    2: "[2/5] Capacidad reducida / Bloques moderados (20-30 min)",
-                    3: "[3/5] Estado nominal / Eficiencia estándar (45 min)",
-                    4: "[4/5] Alto rendimiento / Capacidad extendida (60 min)",
-                    5: "[5/5] Estado de hiperfoco / Disponibilidad máxima (75-90 min)",
+                    1: "Energía baja - Se recomienda un bloque corto (15 min)",
+                    2: "Energía moderada - Bloque de duración media (25 min)",
+                    3: "Energía normal - Bloque recomendado (45 min)",
+                    4: "Energía alta - Bloque largo (60 min)",
+                    5: "Energía máxima - Enfoque total (75-90 min)",
                 }
                 st.markdown(
                     f'<div class="state-label">{lbl_energia[energia]}</div>',
                     unsafe_allow_html=True,
                 )
 
-                factor_ajuste = (
+                factor = (
                     10
                     if (
-                        "Déficit" in perfil.get("sueño", "")
+                        "Menos de 5h" in perfil.get("sueño", "")
                         or perfil.get("estres", 1) >= 4
                     )
                     else 15
                 )
-                tiempo_recomendado = energia * factor_ajuste
+                tiempo_rec = energia * factor
 
             with col_b:
                 duracion = st.number_input(
-                    "Duración Programada (Minutos)",
+                    "Tiempo de la sesión (Minutos)",
                     min_value=1,
                     max_value=180,
-                    value=int(tiempo_recomendado),
+                    value=int(tiempo_rec),
                 )
 
             st.markdown("---")
@@ -458,14 +456,14 @@ else:
                 st.session_state.confirmar_abortar = False
 
             if not st.session_state.ejecutando:
-                if st.button("INICIAR SESIÓN", type="primary"):
+                if st.button("COMENZAR SESIÓN", type="primary"):
                     st.session_state.ejecutando = True
                     st.session_state.pausado = False
                     st.session_state.tiempo_restante = int(duracion * 60)
                     st.session_state.confirmar_abortar = False
                     st.rerun()
             else:
-                st.subheader(f"EJECUTANDO: {tarea_final.upper()}")
+                st.subheader(f"EN CURSO: {tarea_final.upper()}")
                 clock_placeholder = st.empty()
 
                 col_btn1, col_btn2 = st.columns(2)
@@ -481,22 +479,20 @@ else:
 
                 with col_btn2:
                     if not st.session_state.confirmar_abortar:
-                        if st.button("CANCELAR BLOQUE"):
+                        if st.button("CANCELAR SESIÓN"):
                             st.session_state.confirmar_abortar = True
                             st.rerun()
                     else:
-                        st.warning(
-                            "¿Confirmar cancelación? Se perderá el registro."
-                        )
+                        st.warning("¿Quieres cancelar la sesión actual?")
                         col_c1, col_c2 = st.columns(2)
                         with col_c1:
-                            if st.button("Sí, Abortar"):
+                            if st.button("Sí, Cancelar"):
                                 st.session_state.ejecutando = False
                                 st.session_state.pausado = False
                                 st.session_state.confirmar_abortar = False
                                 st.rerun()
                         with col_c2:
-                            if st.button("Volver al Bloque"):
+                            if st.button("Continuar Trabajando"):
                                 st.session_state.confirmar_abortar = False
                                 st.rerun()
 
@@ -553,10 +549,12 @@ else:
 
             if "sesion_para_evaluar" in st.session_state:
                 st.markdown("---")
-                st.subheader("AUDITORÍA DE RENDIMIENTO")
-                q1 = st.slider("Eficiencia Atencional Sostenida (%)", 0, 100, 85)
+                st.subheader("REGISTRO DE RESULTADOS")
+                q1 = st.slider(
+                    "¿Qué tan concentrado estuviste? (%)", 0, 100, 85
+                )
 
-                if st.button("REGISTRAR Y SINCRONIZAR"):
+                if st.button("GUARDAR EN EL HISTORIAL"):
                     info_s = st.session_state.sesion_para_evaluar
                     nueva = {
                         "fecha": str(date.today()),
@@ -587,8 +585,8 @@ else:
                     st.rerun()
 
         # --- PESTAÑA 2: MÉTRICAS Y LOGROS ---
-        elif opcion == "Métricas & Logros":
-            st.title("PANEL DE LOGROS Y ANALÍTICA")
+        elif opcion == "Métricas y Logros":
+            st.title("PANEL DE MÉTRICAS Y LOGROS")
 
             sesiones = datos_user.get("sesiones", [])
             racha = datos_user.get("racha", 0)
@@ -597,12 +595,12 @@ else:
             )
 
             col_m1, col_m2, col_m3 = st.columns(3)
-            col_m1.metric("Volumen Acumulado", f"{horas_totales:.1f} Hrs")
-            col_m2.metric("Sesiones Completadas", num_sesiones)
-            col_m3.metric("Racha Actual", f"{racha} Días")
+            col_m1.metric("Horas Totales", f"{horas_totales:.1f} hrs")
+            col_m2.metric("Sesiones Totales", num_sesiones)
+            col_m3.metric("Racha Actual", f"{racha} días")
 
             st.markdown("---")
-            st.subheader("INSIGNIAS Y RECOMPENSAS DE SISTEMA")
+            st.subheader("INSIGNIAS Y RECOMPENSAS")
 
             col_b1, col_b2 = st.columns(2)
             for i, badge in enumerate(insignias):
@@ -616,7 +614,7 @@ else:
                     st.markdown(
                         f"""
                         <div class="badge-card {estado_class}">
-                            <div class="badge-title">{badge['nombre'].upper()} [{texto_estado}]</div>
+                            <div class="badge-title">{badge['nombre']} [{texto_estado}]</div>
                             <div class="badge-desc">{badge['requisito']}</div>
                         </div>
                     """,
@@ -625,53 +623,85 @@ else:
                     st.progress(badge["progreso"])
 
             st.markdown("---")
-            st.subheader("EVOLUCIÓN TEMPORAL")
+            st.subheader("PROGRESO POR DÍA")
             if sesiones:
                 df = pd.DataFrame(sesiones)
                 if "fecha" in df.columns and "duracion" in df.columns:
                     st.bar_chart(df.groupby("fecha")["duracion"].sum())
             else:
-                st.info("Sin registros acumulados.")
+                st.info("Aún no tienes sesiones registradas.")
 
-        # --- PESTAÑA 3: PROTOCOLOS ---
+        # --- PESTAÑA 3: PROTOCOLOS DE ENFOQUE ---
         elif opcion == "Protocolos de Enfoque":
-            st.title("FRAMEWORKS NEUROCIENTÍFICOS")
-            st.markdown("### 01. PROTOCOLO NSDR")
-            st.write(
-                "Descanso profundo sin sueño de 10 a 20 minutos para restaurar el pool de dopamina estriatal tras bloques de esfuerzo continuo."
+            st.title("GUÍA DE PROTOCOLOS Y HÁBITOS")
+
+            st.markdown("### PROTOCOLOS PRINCIPALES (OBLIGATORIOS)")
+
+            st.markdown(
+                """
+            <div class="protocol-box">
+                <h4 style="color:#58a6ff; margin-0;">1. Regla de los 5 Minutos (Inicio Inmediato)</h4>
+                <p>Si sientes pereza para empezar, comprométete a trabajar solo durante 5 minutos contados con el reloj. Una vez que superas la fricción inicial, el cerebro entra en flujo y resulta mucho más fácil continuar.</p>
+            </div>
+            
+            <div class="protocol-box">
+                <h4 style="color:#58a6ff; margin-0;">2. Aislamiento Físico del Teléfono</h4>
+                <p>Pon el teléfono en otra habitación o fuera de tu vista directa. Mantenerlo en la misma mesa consume energía atencional dividida aunque esté con la pantalla hacia abajo.</p>
+            </div>
+            
+            <div class="protocol-box">
+                <h4 style="color:#58a6ff; margin-0;">3. Descanso Visual y Mental (Pausas Reales)</h4>
+                <p>Al terminar un bloque de trabajo, descansa 5-10 minutos sin mirar pantallas. Camina, toma agua o simplemente mira a la distancia para permitir que la mente procese la información.</p>
+            </div>
+            """,
+                unsafe_allow_html=True,
             )
-            st.markdown("### 02. REGLA DEL UMBRAL LÍMBICO")
-            st.write(
-                "Establecer un compromiso estricto de solo 300 segundos de trabajo para anular la resistencia amygdalar inicial."
+
+            st.markdown("---")
+            st.markdown("### PROTOCOLOS OPCIONALES")
+
+            st.markdown(
+                """
+            <div class="protocol-box">
+                <h4 style="color:#a371f7; margin-0;">Opcional 1: Técnica NSDR (Descanso Profundo)</h4>
+                <p>Túmbate en un lugar cómodo durante 10-15 minutos cerrando los ojos y manteniendo la respiración lenta. Excelente para recuperar claridad cuando estás saturado a mitad del día.</p>
+            </div>
+            
+            <div class="protocol-box">
+                <h4 style="color:#a371f7; margin-0;">Opcional 2: Fijación Visual Previa</h4>
+                <p>Antes de arrancar la sesión, fija la mirada en un solo punto de la pared o pantalla durante 30 segundos. Ayuda a activar la atención del cerebro antes de empezar la tarea.</p>
+            </div>
+            """,
+                unsafe_allow_html=True,
             )
-            st.markdown("### 03. AISLAMIENTO PERIMETRAL")
-            st.write(
-                "Retirar dispositivos móviles del campo visual primario y secundario para eliminar el consumo atencional pasivo."
-            )
-            st.markdown("### 04. ANCLAJE FOVEAL PREVIO")
-            st.write(
-                "Fijar la mirada en un punto estático durante 30 segundos antes de comenzar para inducir activación simpática concentrada."
+
+            st.markdown("---")
+            st.markdown("### TIPS PARA MEJORAR TU DÍA A DÍA")
+            st.markdown(
+                """
+            * **Luz Solar Matutina:** Sal a tomar la luz del sol durante 10-15 minutos nada más levantarte para regular tus niveles de energía y dormir mejor por la noche.
+            * **Cafeína Estratégica:** Evita consumir café durante los primeros 60-90 minutos tras despertarte para evitar el bajón de energía de la tarde.
+            * **Bloques Claros:** Define exactamente qué vas a hacer antes de activar el temporizador. La indecisión durante el bloque arruina la concentración.
+            """
             )
 
         # --- PESTAÑA 4: CONFIGURACIÓN & CUENTAS ---
         elif opcion == "Configuración & Cuentas":
-            st.title("CONFIGURACIÓN DE USUARIO & INTEGRACIONES")
+            st.title("CONFIGURACIÓN Y PANEL")
 
-            st.subheader("Perfil de Usuario")
+            st.subheader("Perfil")
             avatar_url = st.text_input(
-                "URL de Foto de Perfil (Avatar):",
+                "Enlace de imagen de perfil (Avatar):",
                 value=datos_user.get("avatar", ""),
             )
-            if st.button("Actualizar Avatar"):
+            if st.button("Guardar Avatar"):
                 datos_user["avatar"] = avatar_url.strip()
                 guardar_base_datos(db)
-                st.success("Foto de perfil actualizada.")
+                st.success("Avatar actualizado correctamente.")
                 st.rerun()
 
             st.markdown("---")
-            st.subheader("Integración con Notion API")
-            st.caption("Sincroniza tus bloques automáticamente con Notion.")
-
+            st.subheader("Conexión con Notion")
             notion_token = st.text_input(
                 "Notion API Token (secret_...):",
                 value=datos_user.get("notion_token", ""),
@@ -681,35 +711,51 @@ else:
                 "Notion Database ID:", value=datos_user.get("notion_db_id", "")
             )
 
-            if st.button("Guardar Credenciales de Notion"):
+            if st.button("Guardar Configuración de Notion"):
                 datos_user["notion_token"] = notion_token.strip()
                 datos_user["notion_db_id"] = notion_db.strip()
                 guardar_base_datos(db)
-                st.success("Credenciales guardadas correctamente.")
+                st.success("Configuración guardada.")
 
-            # Panel exclusivo de Administrador
+            # --- PANEL EXCLUSIVO DE ADMINISTRADOR ---
             if datos_user.get("es_admin"):
                 st.markdown("---")
-                st.subheader("Panel del Administrador del Sistema")
-                st.write(f"Total de usuarios registrados: {len(db['usuarios'])}")
-                st.json(list(db["usuarios"].keys()))
+                st.subheader("PANEL DE ADMINISTRACIÓN Y BANEOS")
+                st.write(
+                    f"Usuarios registrados en el sistema: **{len(db['usuarios'])}**"
+                )
+
+                for u_name in list(db["usuarios"].keys()):
+                    col_u1, col_u2, col_u3 = st.columns([2, 2, 1])
+                    col_u1.write(f"**{u_name}**")
+                    is_admin_flag = db["usuarios"][u_name].get(
+                        "es_admin", False
+                    )
+                    col_u2.caption(
+                        "Administrador" if is_admin_flag else "Usuario"
+                    )
+
+                    if u_name != usuario_actual:
+                        if col_u3.button("BANEAR / BORRAR", key=f"ban_{u_name}"):
+                            del db["usuarios"][u_name]
+                            guardar_base_datos(db)
+                            st.success(f"Cuenta de {u_name} eliminada.")
+                            st.rerun()
 
             st.markdown("---")
-            st.subheader("Zona de Seguridad")
+            st.subheader("Borrar Datos de Cuenta")
             if "confirmar_borrado" not in st.session_state:
                 st.session_state.confirmar_borrado = False
 
             if not st.session_state.confirmar_borrado:
-                if st.button("RESETEAR DATOS DE CUENTA"):
+                if st.button("Resetear mi Historial"):
                     st.session_state.confirmar_borrado = True
                     st.rerun()
             else:
-                st.error(
-                    "¿ESTÁ SEGURO? Esta acción borrará permanentemente todo el historial del usuario actual."
-                )
+                st.error("¿Seguro que deseas borrar todo tu historial?")
                 col_d1, col_d2 = st.columns(2)
                 with col_d1:
-                    if st.button("Sí, Eliminar Todo"):
+                    if st.button("Sí, Resetear"):
                         datos_user["onboarding_completado"] = False
                         datos_user["perfil"] = {}
                         datos_user["sesiones"] = []
@@ -721,6 +767,6 @@ else:
                         st.session_state.confirmar_borrado = False
                         st.rerun()
                 with col_d2:
-                    if st.button("Cancelar Borrado"):
+                    if st.button("Cancelar"):
                         st.session_state.confirmar_borrado = False
                         st.rerun()
