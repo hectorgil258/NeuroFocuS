@@ -89,13 +89,23 @@ st.markdown(
 )
 
 
-# --- GESTIÓN DE BASE DE DATOS LOCAL ---
+# --- GESTIÓN DE BASE DE DATOS LOCAL Y MIGRACIÓN AUTOMÁTICA ---
 def cargar_base_datos():
     if os.path.exists(DATA_FILE):
         try:
             with open(DATA_FILE, "r", encoding="utf-8") as f:
-                return json.load(f)
-        except:
+                data = json.load(f)
+                if isinstance(data, dict):
+                    # Migración automática si el archivo venía de la versión antigua
+                    if "usuarios" not in data:
+                        return {
+                            "usuarios": {
+                                "default": data
+                            },
+                            "usuario_actual": "default"
+                        }
+                    return data
+        except Exception:
             pass
     return {"usuarios": {}, "usuario_actual": "default"}
 
@@ -109,6 +119,9 @@ db = cargar_base_datos()
 
 # Selector / Creador de Usuario
 usuario_actual = db.get("usuario_actual", "default")
+if "usuarios" not in db:
+    db["usuarios"] = {}
+
 if usuario_actual not in db["usuarios"]:
     db["usuarios"][usuario_actual] = {
         "onboarding_completado": False,
@@ -137,7 +150,7 @@ def sincronizar_con_notion(token, db_id, tarea, categoria, duracion):
     payload = {
         "parent": {"database_id": db_id},
         "properties": {
-            "Tarea": {"title": [{"text": {"content": tarea}}]},
+            "Tarea": {"title": [{"text": {"content": str(tarea)}}]},
             "Categoría": {
                 "rich_text": [{"text": {"content": str(categoria)}}]
             },
@@ -154,13 +167,13 @@ def sincronizar_con_notion(token, db_id, tarea, categoria, duracion):
         )
         with urllib.request.urlopen(req) as resp:
             return resp.status == 200
-    except:
+    except Exception:
         return False
 
 
 # --- SISTEMA DE LOGROS E INSIGNIAS ---
 def calcular_insignias(sesiones, racha):
-    horas_totales = sum(s["duracion"] for s in sesiones) / 60.0
+    horas_totales = sum(s.get("duracion", 0) for s in sesiones) / 60.0
     num_sesiones = len(sesiones)
 
     insignias = [
@@ -338,7 +351,7 @@ else:
                 "Duración Programada (Minutos)",
                 min_value=1,
                 max_value=180,
-                value=tiempo_recomendado,
+                value=int(tiempo_recomendado),
             )
 
         st.markdown("---")
@@ -354,24 +367,13 @@ else:
             if st.button("INICIAR SESIÓN", type="primary"):
                 st.session_state.ejecutando = True
                 st.session_state.pausado = False
-                st.session_state.tiempo_restante = duracion * 60
+                st.session_state.tiempo_restante = int(duracion * 60)
                 st.session_state.confirmar_abortar = False
                 st.rerun()
         else:
             st.subheader(f"EJECUTANDO: {tarea_final.upper()}")
-            minutos_r, segundos_r = divmod(st.session_state.tiempo_restante, 60)
 
-            # Reloj Estilo Industrial
-            st.markdown(
-                f"""
-                <div style="background: #161b22; border: 1px solid #30363d; border-radius: 10px; padding: 30px; text-align: center; margin: 20px 0;">
-                    <h1 style="font-family: monospace; font-size: 90px; color: #58a6ff; margin: 0; letter-spacing: 4px;">
-                        {minutos_r:02d}:{segundos_r:02d}
-                    </h1>
-                </div>
-            """,
-                unsafe_allow_html=True,
-            )
+            clock_placeholder = st.empty()
 
             col_btn1, col_btn2 = st.columns(2)
             with col_btn1:
@@ -403,20 +405,50 @@ else:
                             st.session_state.confirmar_abortar = False
                             st.rerun()
 
-            if not st.session_state.pausado:
+            # Bucle suave para el temporizador
+            while (
+                st.session_state.ejecutando
+                and not st.session_state.pausado
+                and not st.session_state.confirmar_abortar
+                and st.session_state.tiempo_restante > 0
+            ):
+                minutos_r, segundos_r = divmod(st.session_state.tiempo_restante, 60)
+                clock_placeholder.markdown(
+                    f"""
+                    <div style="background: #161b22; border: 1px solid #30363d; border-radius: 10px; padding: 30px; text-align: center; margin: 20px 0;">
+                        <h1 style="font-family: monospace; font-size: 90px; color: #58a6ff; margin: 0; letter-spacing: 4px;">
+                            {minutos_r:02d}:{segundos_r:02d}
+                        </h1>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
                 time.sleep(1)
                 st.session_state.tiempo_restante -= 1
 
-                if st.session_state.tiempo_restante <= 0:
-                    st.session_state.ejecutando = False
-                    st.session_state.sesion_para_evaluar = {
-                        "duracion": duracion,
-                        "tarea": tarea_final,
-                        "categoria": cat_tarea,
-                    }
-                    st.rerun()
-                else:
-                    st.rerun()
+            if (
+                st.session_state.ejecutando
+                and st.session_state.tiempo_restante <= 0
+            ):
+                st.session_state.ejecutando = False
+                st.session_state.sesion_para_evaluar = {
+                    "duracion": duracion,
+                    "tarea": tarea_final,
+                    "categoria": cat_tarea,
+                }
+                st.rerun()
+            elif st.session_state.pausado or st.session_state.confirmar_abortar:
+                minutos_r, segundos_r = divmod(st.session_state.tiempo_restante, 60)
+                clock_placeholder.markdown(
+                    f"""
+                    <div style="background: #161b22; border: 1px solid #30363d; border-radius: 10px; padding: 30px; text-align: center; margin: 20px 0;">
+                        <h1 style="font-family: monospace; font-size: 90px; color: #8b949e; margin: 0; letter-spacing: 4px;">
+                            {minutos_r:02d}:{segundos_r:02d}
+                        </h1>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
 
         # Evaluación Post-Sesión
         if "sesion_para_evaluar" in st.session_state:
@@ -439,7 +471,7 @@ else:
                     datos_user["racha"] = datos_user.get("racha", 0) + 1
                     datos_user["ultima_fecha"] = str(date.today())
 
-                # Sincronización Automática con Notion si están puestas las credenciales
+                # Sincronización Automática con Notion
                 n_token = datos_user.get("notion_token", "")
                 n_db = datos_user.get("notion_db_id", "")
                 if n_token and n_db:
@@ -455,7 +487,7 @@ else:
                 del st.session_state["sesion_para_evaluar"]
                 st.rerun()
 
-    # --- PESTAÑA 2: MÉTRICAS Y LOGROS (SISTEMA DOPAMINÉRGICO) ---
+    # --- PESTAÑA 2: MÉTRICAS Y LOGROS ---
     elif opcion == "Métricas & Logros":
         st.title("PANEL DE LOGROS Y ANALÍTICA")
 
@@ -497,7 +529,8 @@ else:
         st.subheader("EVOLUCIÓN TEMPORAL")
         if sesiones:
             df = pd.DataFrame(sesiones)
-            st.bar_chart(df.groupby("fecha")["duracion"].sum())
+            if "fecha" in df.columns and "duracion" in df.columns:
+                st.bar_chart(df.groupby("fecha")["duracion"].sum())
         else:
             st.info("Sin registros acumulados.")
 
@@ -590,3 +623,4 @@ else:
                 if st.button("Cancelar Borrado"):
                     st.session_state.confirmar_borrado = False
                     st.rerun()
+                    
